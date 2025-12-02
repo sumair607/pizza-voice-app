@@ -1,0 +1,7 @@
+{
+  "name": "Cheesy Occean Pizza Voice Ordering",
+  "description": "A conversational voice application that simulates a pizza ordering chatbot using the Gemini 2.5 Native Audio (Live API). Users can speak to the app to inquire about pizza varieties, deals, and place an order in real-time.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
