@@ -183,7 +183,8 @@ export const useLiveSession = ({
   };
 
   const startSession = useCallback(async () => {
-    if (!process.env.API_KEY || process.env.API_KEY === 'PLACEHOLDER_API_KEY' || process.env.API_KEY === 'PLACEHOLDER_GEMINI_API_KEY') {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY;
+    if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY' || apiKey === 'PLACEHOLDER_GEMINI_API_KEY') {
         onError("Valid Gemini API Key is missing. Please set your actual Gemini API key in .env file.");
         return;
     }
@@ -204,7 +205,7 @@ export const useLiveSession = ({
     onStatusChange(SessionStatus.CONNECTING);
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: apiKey });
       
       // Request microphone with better error handling
       try {
@@ -309,9 +310,17 @@ export const useLiveSession = ({
                     if(currentInputTranscription.trim()) onTranscriptionComplete(true, currentInputTranscription);
                     if(isModelTurn) onTranscriptionComplete(false, currentOutputTranscription);
                     
-                    if (isModelTurn && orderJustPlacedRef.current) {
-                        stopSession(); 
+                    // Auto-end session after order is placed and goodbye is said
+                    if (isModelTurn && orderJustPlacedRef.current && 
+                        (currentOutputTranscription.toLowerCase().includes('goodbye') || 
+                         currentOutputTranscription.toLowerCase().includes('thank you') ||
+                         currentOutputTranscription.toLowerCase().includes('شکریہ') ||
+                         currentOutputTranscription.includes('delivery'))) {
+                        setTimeout(() => {
+                            stopSession();
+                        }, 2000); // Wait 2 seconds after goodbye
                     }
+                    
                     currentInputTranscription = '';
                     currentOutputTranscription = '';
                 }

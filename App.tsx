@@ -368,9 +368,11 @@ const App: React.FC = () => {
                         )}
                         
                         {currentOrder && (
-                            <div className="w-full max-w-2xl mt-4">
+                            <div className="w-full max-w-4xl mt-4 px-4">
                                 <OrderStatusTracker status={currentOrder.status} expectedDeliveryTime={currentOrder.expectedDeliveryTime} canCancel={canCancel} onCancelOrder={handleCancelOrder} timeRemaining={timeRemainingForCancellation} />
-                                <OrderReceipt orderDetails={currentOrder} />
+                                <div className="block">
+                                    <OrderReceipt orderDetails={currentOrder} />
+                                </div>
                                 {(currentOrder.status === OrderStatus.DELIVERED || currentOrder.status === OrderStatus.CANCELED) && (
                                     <div className="mt-6 text-center">{renderActionButton()}</div>
                                 )}
