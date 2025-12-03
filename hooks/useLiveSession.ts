@@ -1,6 +1,6 @@
 
-import { useCallback, useRef, useState, useEffect } from 'react';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { useCallback, useRef } from 'react';
+import { GoogleGenAI, Modality } from '@google/genai';
 import { SessionStatus, OrderDetails, Rider, ShopInfo, MenuItem, Deal, OrderStatus } from '../types';
 import { decode, encode, decodeAudioData } from '../utils/audio';
 import * as api from '../backend/api';
@@ -8,98 +8,82 @@ import * as api from '../backend/api';
 // Available voices in Gemini Live API
 const VOICE_OPTIONS = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Zephyr'];
 
-// Check if current time is within working hours
 const isShopOpen = (start: string, end: string): boolean => {
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
     const [startH, startM] = start.split(':').map(Number);
     const [endH, endM] = end.split(':').map(Number);
-    
     const startMinutes = startH * 60 + startM;
     const endMinutes = endH * 60 + endM;
-
     if (endMinutes < startMinutes) {
-        // Overnight shift (e.g. 11 PM to 2 AM)
         return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
     }
-    
     return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
 };
 
 const generateSystemInstruction = (shopInfo: ShopInfo, pizzas: MenuItem[], drinks: MenuItem[], deals: Deal[]): string => {
   const formatMenuItems = (items: MenuItem[]) => {
-    if (items.length === 0) return 'کوئی دستیاب نہیں';
+    if (items.length === 0) return 'None available';
     return items.map(item =>
-      `- ${item.name}: ${Object.entries(item.sizes).map(([size, price]) => `${size} (Rs.${price})`).join('، ')}`
+      `- ${item.name}: ${Object.entries(item.sizes).map(([size, price]) => `${size} (Rs.${price})`).join(', ')}`
     ).join('\n');
   };
 
   const formatDeals = (deals: Deal[]) => {
-    if (deals.length === 0) return 'کوئی دستیاب نہیں';
+    if (deals.length === 0) return 'None available';
     return deals.map(deal =>
-      `- "${deal.name}": ${deal.description}، صرف Rs.${deal.price} میں۔`
+      `- "${deal.name}": ${deal.description}, only Rs.${deal.price}.`
     ).join('\n');
   };
 
   return `You are a friendly and fast AI voice assistant for a pizza shop named "${shopInfo.name}". Your job is to take pizza orders over the phone.
 
-**CRITICAL LANGUAGE & BEHAVIOR RULES:**
-1.  **ABSOLUTELY NO HINDI SCRIPT (DEVANAGARI).** USE ONLY URDU SCRIPT (Nastaliq/Arabic style) OR ENGLISH.
-2.  **POLITENESS:** Always be polite.
-3.  **VULGARITY:** If the user uses vulgar/abusive language, warn them sternly: "Please use respectful language or this call will be terminated." If they do it again, say "Goodbye" and output the exact token: ***TERMINATE_SESSION***.
-4.  **IRRELEVANCE:** If the user asks irrelevant questions (not about pizza/ordering) for more than 5 sentences, warn them: "Please stick to pizza ordering." If they continue for 3 more sentences, say "I cannot assist with that. Goodbye." and output the exact token: ***TERMINATE_SESSION***.
+**CRITICAL RULES:**
+1.  **NO HINDI SCRIPT.** Use Urdu (Nastaliq) or English only.
+2.  **POLITENESS:** Be polite.
+3.  **VULGARITY:** Warn strictly if vulgar. If repeated, say Goodbye and output: ***TERMINATE_SESSION***.
+4.  **IRRELEVANCE:** Warn if off-topic. If repeated, output: ***TERMINATE_SESSION***.
 
-**Your Knowledge Base:**
-**Pizzas:**
+**Menu:**
+Pizzas:
 ${formatMenuItems(pizzas)}
-**Drinks:**
+Drinks:
 ${formatMenuItems(drinks)}
-**Deals:**
+Deals:
 ${formatDeals(deals)}
 
-**Interaction Flow:**
-1.  Greet warmly as "${shopInfo.name}" assistant.
-2.  Answer menu questions using strictly the provided list.
-3.  **ALWAYS ask for Special Instructions** before finalizing.
-4.  Confirm the full order, total price, and special instructions.
-5.  Ask for Payment Method, Name, Address, and WhatsApp number.
-6.  Call \`placeOrder\` to finalize.
-7.  Use \`checkOrderStatus\` if they ask status.
-
-**Function Calling Rule:**
-- Speak to the user in **Urdu or English**.
-- Pass data to functions in **ENGLISH ONLY**.
+**Flow:**
+1. Greet as "${shopInfo.name}".
+2. Answer menu questions.
+3. **Ask for Special Instructions**.
+4. Confirm order & total.
+5. Ask Payment Method, Name, Address, WhatsApp.
+6. Call 'placeOrder'.
 `;
 };
 
-
-const placeOrderFunctionDeclaration: FunctionDeclaration = {
+const placeOrderTool = {
   name: 'placeOrder',
-  description: 'Finalizes the pizza order and sends a receipt.',
+  description: 'Finalizes the pizza order.',
   parameters: {
-    type: Type.OBJECT,
+    type: 'OBJECT',
     properties: {
-      customerName: { type: Type.STRING, description: 'The name of the customer.' },
-      address: { type: Type.STRING, description: 'The delivery address.' },
-      whatsappNumber: { type: Type.STRING, description: 'The customer\'s WhatsApp number for the receipt.' },
-      items: {
-        type: Type.ARRAY,
-        description: 'A list of items in the order.',
-        items: { type: Type.STRING },
-      },
-      specialInstructions: { type: Type.STRING, description: 'Any special requests. Defaults to "None".' },
-      total: { type: Type.NUMBER, description: 'The total cost of the order in Rs.' },
-      paymentMethod: { type: Type.STRING, description: 'The chosen payment method.' },
+      customerName: { type: 'STRING' },
+      address: { type: 'STRING' },
+      whatsappNumber: { type: 'STRING' },
+      items: { type: 'ARRAY', items: { type: 'STRING' } },
+      specialInstructions: { type: 'STRING' },
+      total: { type: 'NUMBER' },
+      paymentMethod: { type: 'STRING' },
     },
     required: ['customerName', 'address', 'whatsappNumber', 'items', 'total', 'paymentMethod'],
   },
 };
 
-const checkOrderStatusFunctionDeclaration: FunctionDeclaration = {
+const checkOrderStatusTool = {
     name: 'checkOrderStatus',
-    description: 'Checks the status of the most recently placed order.',
-    parameters: { type: Type.OBJECT, properties: {} },
+    description: 'Checks status of recent order.',
+    parameters: { type: 'OBJECT', properties: {} },
 };
 
 interface UseLiveSessionProps {
@@ -116,14 +100,6 @@ interface UseLiveSessionProps {
   onError: (error: string) => void;
 }
 
-// --- Simulated Backend Rules (Simulated) ---
-const BASE_PREP_TIME_MS = 10 * 60 * 1000;
-const PER_ITEM_PREP_TIME_MS = 3 * 60 * 1000;
-const BASE_TRAVEL_TIME_MS = 15 * 60 * 1000;
-const MAX_RANDOM_TRAVEL_MS = 10 * 60 * 1000;
-const RIDER_COOLDOWN_BASE_MS = 2 * 60 * 1000;
-const RIDER_COOLDOWN_RANDOM_MS = 5 * 60 * 1000;
-
 export const useLiveSession = ({
   shopInfo,
   pizzas,
@@ -137,7 +113,8 @@ export const useLiveSession = ({
   onOrderPlaced,
   onError,
 }: UseLiveSessionProps) => {
-  const sessionPromiseRef = useRef<Promise<Session> | null>(null);
+  const sessionPromiseRef = useRef<Promise<any> | null>(null);
+  const activeSessionRef = useRef<any>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
@@ -146,20 +123,15 @@ export const useLiveSession = ({
   
   const orderJustPlacedRef = useRef(false);
   const currentSessionOrderIdRef = useRef<string | null>(null);
-  const riderStatusRef = useRef<Record<string, { availableTime: number }>>({});
 
   const stopSession = useCallback(async () => {
     onStatusChange(SessionStatus.IDLE);
-
-    if (sessionPromiseRef.current) {
-      try {
-        const session = await sessionPromiseRef.current;
-        session.close();
-      } catch (e) {
-        console.error('Error closing session:', e);
-      }
-      sessionPromiseRef.current = null;
+    
+    if (activeSessionRef.current) {
+        try { activeSessionRef.current.close(); } catch(e) {}
+        activeSessionRef.current = null;
     }
+    sessionPromiseRef.current = null;
 
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach(track => track.stop());
@@ -185,50 +157,19 @@ export const useLiveSession = ({
   
   const handlePlaceOrder = async (args: any) => {
     const now = new Date();
-    const currentTime = now.getTime();
-    const numberOfItems = args.items?.length || 1;
-    
-    const dynamicPrepTime = BASE_PREP_TIME_MS + (numberOfItems * PER_ITEM_PREP_TIME_MS);
-    
-    if (riders.length === 0) {
-        console.error("No riders available.");
-        return;
-    }
-
-    let bestRider: Rider = riders[0];
-    let soonestAvailableTime = riderStatusRef.current[bestRider.name]?.availableTime || currentTime;
-
-    for (let i = 1; i < riders.length; i++) {
-        const rider = riders[i];
-        const riderAvailableTime = riderStatusRef.current[rider.name]?.availableTime || currentTime;
-        if (riderAvailableTime < soonestAvailableTime) {
-            soonestAvailableTime = riderAvailableTime;
-            bestRider = rider;
-        }
-    }
-    
-    const effectiveRiderAvailableTime = Math.max(soonestAvailableTime, currentTime);
-    const deliveryStartTime = Math.max(currentTime + dynamicPrepTime, effectiveRiderAvailableTime);
-    const dynamicTravelTime = BASE_TRAVEL_TIME_MS + (Math.random() * MAX_RANDOM_TRAVEL_MS);
-    const estimatedDeliveryTimestamp = deliveryStartTime + dynamicTravelTime;
-    
-    const cooldownPeriod = RIDER_COOLDOWN_BASE_MS + (Math.random() * RIDER_COOLDOWN_RANDOM_MS);
-    riderStatusRef.current[bestRider.name] = { availableTime: estimatedDeliveryTimestamp + cooldownPeriod };
-    
     const orderData: Omit<OrderDetails, 'id'> = {
-      ...(args as Omit<OrderDetails, 'id' | 'orderTimestamp' | 'expectedDeliveryTime' | 'assignedRider' | 'status'>),
+      ...(args as any),
       specialInstructions: args.specialInstructions || "None",
       orderTimestamp: now,
-      expectedDeliveryTime: new Date(estimatedDeliveryTimestamp),
-      assignedRider: bestRider,
+      expectedDeliveryTime: new Date(now.getTime() + 45 * 60000),
+      assignedRider: riders.length > 0 ? riders[0] : { name: "Shop Rider", number: "N/A" },
       status: OrderStatus.PLACED
     };
 
     try {
       const orderId = await api.saveOrderToHistory(orderData);
       currentSessionOrderIdRef.current = orderId; 
-      const finalOrder: OrderDetails = { ...orderData, id: orderId };
-      onOrderPlaced(finalOrder);
+      onOrderPlaced({ ...orderData, id: orderId });
       orderJustPlacedRef.current = true; 
     } catch (err) {
       console.error("Failed to save order", err);
@@ -237,16 +178,18 @@ export const useLiveSession = ({
   };
 
   const handleCheckOrderStatus = async () => {
-    if (!currentSessionOrderIdRef.current) {
-        return "No active order found.";
-    }
+    if (!currentSessionOrderIdRef.current) return "No active order found.";
     return "Order is in system. Check screen for status.";
   };
 
   const startSession = useCallback(async () => {
-    // 1. Check Working Hours
+    if (!process.env.API_KEY || process.env.API_KEY === 'PLACEHOLDER_API_KEY' || process.env.API_KEY === 'PLACEHOLDER_GEMINI_API_KEY') {
+        onError("Valid Gemini API Key is missing. Please set your actual Gemini API key in .env file.");
+        return;
+    }
+
     if (shopInfo.workingHours && !isShopOpen(shopInfo.workingHours.start, shopInfo.workingHours.end)) {
-        onError(`Shop is currently closed. Hours: ${shopInfo.workingHours.start} to ${shopInfo.workingHours.end}`);
+        onError(`Shop is closed. Hours: ${shopInfo.workingHours.start}-${shopInfo.workingHours.end}`);
         return;
     }
 
@@ -259,9 +202,7 @@ export const useLiveSession = ({
       mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       let baseInstruction = generateSystemInstruction(shopInfo, pizzas, drinks, deals);
-      if (allowedZones.length > 0) {
-        baseInstruction += `\n\n**Delivery Zones:** Accept orders only for: **${allowedZones.join('، ')}**.`;
-      }
+      if (allowedZones.length > 0) baseInstruction += `\n\n**Delivery Zones:** ${allowedZones.join(', ')}.`;
 
       const randomVoice = VOICE_OPTIONS[Math.floor(Math.random() * VOICE_OPTIONS.length)];
       
@@ -281,100 +222,106 @@ export const useLiveSession = ({
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: randomVoice } } },
           systemInstruction: baseInstruction,
-          tools: [{ functionDeclarations: [placeOrderFunctionDeclaration, checkOrderStatusFunctionDeclaration] }],
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
+          tools: [{ functionDeclarations: [placeOrderTool, checkOrderStatusTool] as any }],
         },
         callbacks: {
-          onopen: () => {
-            onStatusChange(SessionStatus.CONNECTED);
-            const source = inputAudioContext.createMediaStreamSource(mediaStreamRef.current!);
-            mediaStreamSourceRef.current = source;
-            const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
-            scriptProcessorRef.current = scriptProcessor;
+            onopen: () => {
+                onStatusChange(SessionStatus.CONNECTED);
+                sessionPromiseRef.current?.then(sess => { activeSessionRef.current = sess; });
 
-            scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
-              const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-              const buffer = new ArrayBuffer(inputData.length * 2);
-              const view = new DataView(buffer);
-              for (let i = 0; i < inputData.length; i++) {
-                const s = Math.max(-1, Math.min(1, inputData[i]));
-                view.setInt16(i * 2, s * 0x7FFF, true);
-              }
-              sessionPromiseRef.current?.then((session) => {
-                session.sendRealtimeInput({ media: { data: encode(new Uint8Array(buffer)), mimeType: 'audio/pcm;rate=16000' } });
-              });
-            };
-            source.connect(scriptProcessor);
-            scriptProcessor.connect(inputAudioContext.destination);
-          },
-          onmessage: async (message: LiveServerMessage) => {
-             if (message.serverContent?.inputTranscription) {
-              currentInputTranscription += message.serverContent.inputTranscription.text;
-              onTranscriptionUpdate(true, currentInputTranscription);
-            }
-            if (message.serverContent?.outputTranscription) {
-              currentOutputTranscription += message.serverContent.outputTranscription.text;
-              onTranscriptionUpdate(false, currentOutputTranscription);
-            }
-            
-            if (message.serverContent?.turnComplete) {
-              // ** SECURITY CHECK: Did the AI decide to terminate? **
-              if (currentOutputTranscription.includes('***TERMINATE_SESSION***')) {
-                  stopSession();
-                  onError("Session terminated due to policy violation (Vulgarity or Irrelevance).");
-                  // SHADOW BAN USER FOR 24 HOURS
-                  localStorage.setItem('bannedUntil', (Date.now() + 24 * 60 * 60 * 1000).toString());
-                  return;
-              }
+                const source = inputAudioContext.createMediaStreamSource(mediaStreamRef.current!);
+                mediaStreamSourceRef.current = source;
+                const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
+                scriptProcessorRef.current = scriptProcessor;
 
-              const isModelTurn = currentOutputTranscription.trim().length > 0;
-              if(currentInputTranscription.trim()) onTranscriptionComplete(true, currentInputTranscription);
-              if(isModelTurn) onTranscriptionComplete(false, currentOutputTranscription);
-              
-              if (isModelTurn && orderJustPlacedRef.current) {
-                stopSession();
-                orderJustPlacedRef.current = false;
-              }
-              currentInputTranscription = '';
-              currentOutputTranscription = '';
-            }
-
-            const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-            if (base64Audio) {
-              nextStartTime = Math.max(nextStartTime, outputAudioContext.currentTime);
-              const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1);
-              const sourceNode = outputAudioContext.createBufferSource();
-              sourceNode.buffer = audioBuffer;
-              sourceNode.connect(outputAudioContext.destination);
-              sourceNode.addEventListener('ended', () => sources.delete(sourceNode));
-              sourceNode.start(nextStartTime);
-              nextStartTime += audioBuffer.duration;
-              sources.add(sourceNode);
-            }
-            
-            if (message.toolCall?.functionCalls) {
-              for (const fc of message.toolCall.functionCalls) {
-                if (fc.name === 'placeOrder') {
-                  await handlePlaceOrder(fc.args);
-                  const session = await sessionPromiseRef.current;
-                  session?.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "OK, order placed." } } });
-                } else if (fc.name === 'checkOrderStatus') {
-                    const statusMsg = await handleCheckOrderStatus();
-                    const session = await sessionPromiseRef.current;
-                    session?.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: statusMsg } } });
+                scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+                    const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                    const buffer = new ArrayBuffer(inputData.length * 2);
+                    const view = new DataView(buffer);
+                    for (let i = 0; i < inputData.length; i++) {
+                        const s = Math.max(-1, Math.min(1, inputData[i]));
+                        view.setInt16(i * 2, s * 0x7FFF, true);
+                    }
+                    if (activeSessionRef.current) {
+                        activeSessionRef.current.sendRealtimeInput({ media: { data: encode(new Uint8Array(buffer)), mimeType: 'audio/pcm;rate=16000' } });
+                    }
+                };
+                source.connect(scriptProcessor);
+                scriptProcessor.connect(inputAudioContext.destination);
+            },
+            onmessage: async (message: any) => {
+                 if (message.serverContent?.inputTranscription) {
+                    currentInputTranscription += message.serverContent.inputTranscription.text;
+                    onTranscriptionUpdate(true, currentInputTranscription);
                 }
-              }
+                if (message.serverContent?.outputTranscription) {
+                    currentOutputTranscription += message.serverContent.outputTranscription.text;
+                    onTranscriptionUpdate(false, currentOutputTranscription);
+                }
+                
+                if (message.serverContent?.turnComplete) {
+                    if (currentOutputTranscription.includes('***TERMINATE_SESSION***')) {
+                        stopSession();
+                        onError("Session terminated due to policy violation.");
+                        localStorage.setItem('bannedUntil', (Date.now() + 24 * 60 * 60 * 1000).toString());
+                        return;
+                    }
+                    const isModelTurn = currentOutputTranscription.trim().length > 0;
+                    if(currentInputTranscription.trim()) onTranscriptionComplete(true, currentInputTranscription);
+                    if(isModelTurn) onTranscriptionComplete(false, currentOutputTranscription);
+                    
+                    if (isModelTurn && orderJustPlacedRef.current) {
+                        stopSession(); 
+                    }
+                    currentInputTranscription = '';
+                    currentOutputTranscription = '';
+                }
+
+                const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+                if (base64Audio) {
+                    nextStartTime = Math.max(nextStartTime, outputAudioContext.currentTime);
+                    const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1);
+                    const sourceNode = outputAudioContext.createBufferSource();
+                    sourceNode.buffer = audioBuffer;
+                    sourceNode.connect(outputAudioContext.destination);
+                    sourceNode.addEventListener('ended', () => sources.delete(sourceNode));
+                    sourceNode.start(nextStartTime);
+                    nextStartTime += audioBuffer.duration;
+                    sources.add(sourceNode);
+                }
+
+                if (message.serverContent?.interrupted) {
+                    sources.forEach(s => s.stop());
+                    sources.clear();
+                    nextStartTime = 0;
+                }
+                
+                if (message.toolCall?.functionCalls) {
+                    if (sessionPromiseRef.current) {
+                        sessionPromiseRef.current.then(async (session) => {
+                            for (const fc of message.toolCall!.functionCalls!) {
+                                if (fc.name === 'placeOrder') {
+                                    await handlePlaceOrder(fc.args);
+                                    session.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { result: "OK" } }] });
+                                } else if (fc.name === 'checkOrderStatus') {
+                                    const statusMsg = await handleCheckOrderStatus();
+                                    session.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { result: statusMsg } }] });
+                                }
+                            }
+                        });
+                    }
+                }
+            },
+            onclose: (e: any) => console.log("Session closed", e),
+            onerror: (e: any) => {
+                console.error('Session error:', e);
+                onError(`Connection error: ${e.message || 'Unknown error'}`);
+                onStatusChange(SessionStatus.ERROR);
+                stopSession();
             }
-          },
-          onerror: (e: ErrorEvent) => {
-            console.error('Session error:', e);
-            onError('Connection error.');
-            stopSession();
-          },
-          onclose: () => stopSession(),
-        },
+        }
       });
+
     } catch (err) {
       console.error('Failed start:', err);
       onError(`Failed to start: ${(err as Error).message}`);

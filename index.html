@@ -10,38 +10,22 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400..700&display=swap" rel="stylesheet">
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
-    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "vite": "https://aistudiocdn.com/vite@^7.2.4",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
+    "vite": "https://aistudiocdn.com/vite@^7.2.6",
     "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
   <body class="bg-gray-900 text-white">
     <div id="root"></div>
-<!-- Add these UI components -->
-<div class="fixed bottom-4 right-4">
-  <!-- Voice toggle button with visual feedback -->
-  <button class="bg-red-500 hover:bg-red-600 rounded-full p-4 shadow-lg">
-    🎤
-  </button>
-</div>
-
-<!-- Order progress indicator -->
-<div class="flex justify-between mb-4">
-  <div class="step">Menu</div>
-  <div class="step">Customize</div>
-  <div class="step">Review</div>
-  <div class="step">Checkout</div>
-</div>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>
