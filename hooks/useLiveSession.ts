@@ -277,10 +277,10 @@ export const useLiveSession = ({
                             view.setInt16(i * 2, s * 0x7FFF, true);
                         }
                         activeSessionRef.current.sendRealtimeInput({ media: { data: encode(new Uint8Array(buffer)), mimeType: 'audio/pcm;rate=16000' } });
-                    } catch (error) {
-                        console.warn('Audio processing failed:', error.message);
+                    } catch (error: any) {
+                        console.warn('Audio processing failed:', error?.message || 'Unknown error');
                         // Stop processing if connection is broken
-                        if (error.message.includes('CLOSING') || error.message.includes('CLOSED')) {
+                        if (error?.message?.includes('CLOSING') || error?.message?.includes('CLOSED')) {
                             stopSession();
                         }
                     }
