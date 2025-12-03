@@ -5,8 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   
-  // Support both API_KEY and GEMINI_API_KEY
-  const apiKey = env.API_KEY || env.GEMINI_API_KEY;
+  // Support multiple environment variable formats
+  const apiKey = env.API_KEY || env.GEMINI_API_KEY || env.VITE_API_KEY || env.VITE_GEMINI_API_KEY;
   
   if (apiKey && apiKey !== 'PLACEHOLDER_API_KEY' && apiKey !== 'PLACEHOLDER_GEMINI_API_KEY') {
     console.log("✅ [Config] Gemini API_KEY loaded successfully.");
@@ -17,7 +17,11 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     define: {
-      'process.env.API_KEY': JSON.stringify(apiKey)
+      'process.env.API_KEY': JSON.stringify(apiKey),
+      'process.env.VITE_API_KEY': JSON.stringify(apiKey)
+    },
+    build: {
+      chunkSizeWarningLimit: 1000
     }
   }
 })

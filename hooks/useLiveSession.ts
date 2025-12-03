@@ -193,13 +193,32 @@ export const useLiveSession = ({
         return;
     }
 
+    // Check if browser supports required features
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        onError("Your browser doesn't support microphone access. Try Chrome or Safari.");
+        return;
+    }
+
     orderJustPlacedRef.current = false;
     currentSessionOrderIdRef.current = null;
     onStatusChange(SessionStatus.CONNECTING);
     
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Request microphone with better error handling
+      try {
+        mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
+          audio: { 
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          } 
+        });
+      } catch (micError) {
+        onError("Microphone access denied. Please allow microphone and refresh.");
+        return;
+      }
 
       let baseInstruction = generateSystemInstruction(shopInfo, pizzas, drinks, deals);
       if (allowedZones.length > 0) baseInstruction += `\n\n**Delivery Zones:** ${allowedZones.join(', ')}.`;
@@ -216,6 +235,15 @@ export const useLiveSession = ({
       let currentInputTranscription = '';
       let currentOutputTranscription = '';
 
+      // Add connection timeout
+      const connectionTimeout = setTimeout(() => {
+        if (!activeSessionRef.current) {
+          onError('Connection timeout. Please check your internet and try again.');
+          onStatusChange(SessionStatus.ERROR);
+          stopSession();
+        }
+      }, 10000); // 10 second timeout
+
       sessionPromiseRef.current = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
@@ -226,6 +254,8 @@ export const useLiveSession = ({
         },
         callbacks: {
             onopen: () => {
+                console.log('✅ Gemini Live session connected');
+                clearTimeout(connectionTimeout);
                 onStatusChange(SessionStatus.CONNECTED);
                 sessionPromiseRef.current?.then(sess => { activeSessionRef.current = sess; });
 
@@ -235,15 +265,24 @@ export const useLiveSession = ({
                 scriptProcessorRef.current = scriptProcessor;
 
                 scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
-                    const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-                    const buffer = new ArrayBuffer(inputData.length * 2);
-                    const view = new DataView(buffer);
-                    for (let i = 0; i < inputData.length; i++) {
-                        const s = Math.max(-1, Math.min(1, inputData[i]));
-                        view.setInt16(i * 2, s * 0x7FFF, true);
-                    }
-                    if (activeSessionRef.current) {
+                    // Check if session is still active and connected
+                    if (!activeSessionRef.current) return;
+                    
+                    try {
+                        const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                        const buffer = new ArrayBuffer(inputData.length * 2);
+                        const view = new DataView(buffer);
+                        for (let i = 0; i < inputData.length; i++) {
+                            const s = Math.max(-1, Math.min(1, inputData[i]));
+                            view.setInt16(i * 2, s * 0x7FFF, true);
+                        }
                         activeSessionRef.current.sendRealtimeInput({ media: { data: encode(new Uint8Array(buffer)), mimeType: 'audio/pcm;rate=16000' } });
+                    } catch (error) {
+                        console.warn('Audio processing failed:', error.message);
+                        // Stop processing if connection is broken
+                        if (error.message.includes('CLOSING') || error.message.includes('CLOSED')) {
+                            stopSession();
+                        }
                     }
                 };
                 source.connect(scriptProcessor);
@@ -312,10 +351,25 @@ export const useLiveSession = ({
                     }
                 }
             },
-            onclose: (e: any) => console.log("Session closed", e),
+            onclose: (e: any) => {
+                console.log("Session closed", e);
+                activeSessionRef.current = null;
+                if (onStatusChange) {
+                    onStatusChange(SessionStatus.IDLE);
+                }
+            },
             onerror: (e: any) => {
                 console.error('Session error:', e);
-                onError(`Connection error: ${e.message || 'Unknown error'}`);
+                activeSessionRef.current = null;
+                let errorMsg = 'Connection failed';
+                if (e.message?.includes('API key') || e.message?.includes('401')) {
+                    errorMsg = 'Invalid API key';
+                } else if (e.message?.includes('quota') || e.message?.includes('429')) {
+                    errorMsg = 'API quota exceeded';
+                } else if (e.message?.includes('network') || e.message?.includes('timeout')) {
+                    errorMsg = 'Network connection failed';
+                }
+                onError(`${errorMsg}. Please try again.`);
                 onStatusChange(SessionStatus.ERROR);
                 stopSession();
             }
