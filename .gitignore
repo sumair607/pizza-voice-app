@@ -28,3 +28,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local shop keys (do not commit)
+.shop_keys.json
+shop_keys_export.txt

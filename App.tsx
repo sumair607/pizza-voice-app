@@ -52,27 +52,6 @@ const App: React.FC = () => {
         ]);
         setSettings(loadedSettings);
         setOrderHistory(history);
-        
-        // Load persisted order if exists
-        const savedOrder = localStorage.getItem('currentOrder');
-        if (savedOrder) {
-          try {
-            const orderData = JSON.parse(savedOrder);
-            const restoredOrder = {
-              ...orderData,
-              orderTimestamp: new Date(orderData.orderTimestamp),
-              expectedDeliveryTime: orderData.expectedDeliveryTime ? new Date(orderData.expectedDeliveryTime) : null
-            };
-            // Only restore if order is still active (not delivered/canceled)
-            if (restoredOrder.status === 'PLACED' || restoredOrder.status === 'PREPARING' || restoredOrder.status === 'OUT_FOR_DELIVERY') {
-              setCurrentOrder(restoredOrder);
-            } else {
-              localStorage.removeItem('currentOrder');
-            }
-          } catch (e) {
-            localStorage.removeItem('currentOrder');
-          }
-        }
       } catch (err) {
         console.error("Failed to load initial data", err);
         setError("Could not load app settings.");
@@ -93,17 +72,8 @@ const App: React.FC = () => {
     if (currentOrder?.id) {
         const unsubscribe = api.listenToOrderUpdates(currentOrder.id, (updatedOrder) => {
             setCurrentOrder(updatedOrder);
-            // Update localStorage with latest order status
-            localStorage.setItem('currentOrder', JSON.stringify({
-              ...updatedOrder,
-              orderTimestamp: updatedOrder.orderTimestamp.toISOString(),
-              expectedDeliveryTime: updatedOrder.expectedDeliveryTime?.toISOString()
-            }));
-            
             if (updatedOrder.status === OrderStatus.DELIVERED || updatedOrder.status === OrderStatus.CANCELED) {
-                // Clear localStorage when order is complete
-                localStorage.removeItem('currentOrder');
-                setTimeout(async () => {
+                 setTimeout(async () => {
                     const history = await api.getOrderHistory();
                     setOrderHistory(history);
                 }, 1000);
@@ -152,13 +122,7 @@ const App: React.FC = () => {
 
   const onOrderPlaced = useCallback((newOrder: OrderDetails) => {
     setCurrentOrder(newOrder);
-    setCurrentTime(new Date());
-    // Store order in localStorage for persistence
-    localStorage.setItem('currentOrder', JSON.stringify({
-      ...newOrder,
-      orderTimestamp: newOrder.orderTimestamp.toISOString(),
-      expectedDeliveryTime: newOrder.expectedDeliveryTime?.toISOString()
-    }));
+    setCurrentTime(new Date()); 
   }, []);
 
   const { startSession, stopSession } = useLiveSession({
@@ -341,7 +305,6 @@ const App: React.FC = () => {
                             <div className="text-center text-gray-400 mb-8">
                                 <h2 className="text-2xl font-bold text-white mb-2">Hungry? Just Ask!</h2>
                                 <p>Tap the button below and speak to place your order.</p>
-                                <p className="text-sm text-yellow-300 mt-2">📱 Mobile users: Allow microphone access when prompted</p>
                                 {settings && settings.riders.length === 0 && <p className="text-yellow-400 font-semibold mt-2">Shop Warning: No riders configured.</p>}
                             </div>
                         )}
@@ -368,11 +331,9 @@ const App: React.FC = () => {
                         )}
                         
                         {currentOrder && (
-                            <div className="w-full max-w-4xl mt-4 px-4">
+                            <div className="w-full max-w-2xl mt-4">
                                 <OrderStatusTracker status={currentOrder.status} expectedDeliveryTime={currentOrder.expectedDeliveryTime} canCancel={canCancel} onCancelOrder={handleCancelOrder} timeRemaining={timeRemainingForCancellation} />
-                                <div className="block">
-                                    <OrderReceipt orderDetails={currentOrder} />
-                                </div>
+                                <OrderReceipt orderDetails={currentOrder} />
                                 {(currentOrder.status === OrderStatus.DELIVERED || currentOrder.status === OrderStatus.CANCELED) && (
                                     <div className="mt-6 text-center">{renderActionButton()}</div>
                                 )}

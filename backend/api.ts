@@ -63,19 +63,36 @@ export const getSettings = async (): Promise<SettingsPayload> => {
     // Shop doesn't exist yet! Let's create it dynamically.
     console.log(`Firebase API: Shop [${shopId}] not found. Creating new shop instance...`);
     
-    let newShopData = { ...defaultShopTemplate };
-    
-    // If we have specific overrides in db.ts, use them
-    if (preconfiguredShops[shopId]) {
-        newShopData = { ...newShopData, ...preconfiguredShops[shopId] };
-    } else {
-        // Otherwise just set the name based on the URL
-        newShopData.shopInfo.name = formatShopName(shopId);
-    }
+        let newShopData = { ...defaultShopTemplate } as any;
 
-    await setDoc(settingsDocRef, newShopData);
-    return { id: 'main', ...newShopData };
+        // If we have specific overrides in db.ts, use them
+        if (preconfiguredShops[shopId]) {
+                newShopData = { ...newShopData, ...preconfiguredShops[shopId] };
+        } else {
+                // Otherwise just set the name based on the URL
+                newShopData.shopInfo.name = formatShopName(shopId);
+        }
+
+        // Ensure newly created shops have a non-trivial adminKey.
+        // If an adminKey is already provided by preconfiguredShops, keep it.
+        if (!newShopData.shopInfo || !newShopData.shopInfo.adminKey) {
+            newShopData.shopInfo = newShopData.shopInfo || {};
+            newShopData.shopInfo.adminKey = generateAdminKey(12);
+            // Log that a key was generated, but do NOT print the key value to avoid exposing secrets in logs.
+            console.log(`Firebase API: Generated admin key for new shop [${shopId}] (value not logged).`);
+        }
+
+        await setDoc(settingsDocRef, newShopData);
+        return { id: 'main', ...newShopData };
   }
+};
+
+// --- Utility: Generate a random admin key ---
+const generateAdminKey = (length = 12) => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let out = '';
+    for (let i = 0; i < length; i++) out += chars.charAt(Math.floor(Math.random() * chars.length));
+    return out;
 };
 
 export const getOrderHistory = async (): Promise<OrderDetails[]> => {

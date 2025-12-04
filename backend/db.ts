@@ -1,6 +1,16 @@
 
 import { SettingsPayload } from '../types';
 
+// Try to load local shop keys from `.shop_keys.json` (kept out of git).
+let shopKeys: Record<string, string> = {};
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  shopKeys = require('../.shop_keys.json');
+} catch (e) {
+  // No local keys file found — fall back to predictable keys.
+  shopKeys = {};
+}
+
 // Base template for any new shop that opens via the URL
 export const defaultShopTemplate: Omit<SettingsPayload, 'id'> = {
   shopInfo: {
@@ -60,8 +70,8 @@ const generatePreconfiguredShops = () => {
         // Format ID: shop01, shop02, ... shop50
         const id = i < 10 ? `shop0${i}` : `shop${i}`;
         
-        // Format Key: key_shop01, key_shop02, etc.
-        const secretKey = `key_${id}`;
+        // Prefer keys from `.shop_keys.json` when available, otherwise fall back to predictable key.
+        const secretKey = shopKeys[id] || `key_${id}`;
 
         shops[id] = {
             shopInfo: {
@@ -78,3 +88,4 @@ const generatePreconfiguredShops = () => {
 };
 
 export const preconfiguredShops: Record<string, Partial<SettingsPayload>> = generatePreconfiguredShops();
+
