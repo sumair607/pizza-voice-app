@@ -32,3 +32,7 @@ node scripts/export_shop_keys.cjs
 This creates `shop_keys_export.txt` in the project root. Keep that file secure and do not commit it to source control.
 
 If you need to rotate or regenerate a single shop key, edit `.shop_keys.json` and update the shop's `shopInfo.adminKey` in Firestore via the admin UI.
+
+## Security Documentation
+
+Security guidance and example Firestore rules have been moved to `docs/security/`. See `docs/security/FIRESTORE_RULES.md` and `docs/security/SECURITY.md` for recommendations on securing Firestore and handling keys.
