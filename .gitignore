@@ -32,3 +32,5 @@ dist-ssr
 # Local shop keys (do not commit)
 .shop_keys.json
 shop_keys_export.txt
+.vercel
+.env*.local
