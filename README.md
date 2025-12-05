@@ -19,6 +19,25 @@ View your app in AI Studio: https://ai.studio/apps/drive/1toyC6huVG_eEzQ8jAcjfrq
 3. Run the app:
    `npm run dev`
 
+Server-side Gemini key (recommended):
+
+The app can optionally use a server-side Gemini key (recommended) so your secret is not exposed to browsers. To configure this on Vercel (recommended) or locally:
+
+- Server env name: `GEMINI_API_KEY` (do NOT prefix with `VITE_`).
+- Optionally configure `GEMINI_API_URL` if you need a custom API endpoint.
+
+Vercel CLI commands (run in WSL / project root) to set `GEMINI_API_KEY` interactively:
+
+```bash
+vercel link               # if not already linked
+vercel env add GEMINI_API_KEY preview
+vercel env add GEMINI_API_KEY production
+```
+
+Notes:
+- `VITE_GEMINI_API_KEY` is client-visible (bundled into the browser) and should only be used temporarily. For production, prefer `GEMINI_API_KEY` on the server and use the provided `/api/gemini-proxy` endpoint to make requests without exposing your key.
+- After adding envs, redeploy: `vercel --prod --confirm` or merge to `main` if Vercel is connected to Git.
+
 ## Shop Keys (Handover)
 
 You can hand over a pre-generated admin key to each shop owner so they can manage their shop's settings. Keys are stored locally in `.shop_keys.json` (this file is intentionally ignored by git).
