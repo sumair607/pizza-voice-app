@@ -183,10 +183,24 @@ export const useLiveSession = ({
   };
 
   const startSession = useCallback(async () => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY;
-    if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY' || apiKey === 'PLACEHOLDER_GEMINI_API_KEY') {
-        onError("Valid Gemini API Key is missing. Please set your actual Gemini API key in .env file.");
+    // Prefer client-side VITE_GEMINI_API_KEY only for full live Gemini sessions.
+    // If not present, check for a server-side key (GEMINI_API_KEY) via the proxy endpoint.
+    const clientApiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY;
+    if (!clientApiKey || clientApiKey === 'PLACEHOLDER_API_KEY' || clientApiKey === 'PLACEHOLDER_GEMINI_API_KEY') {
+      try {
+        const resp = await fetch('/api/gemini-status');
+        const json = await resp.json();
+        if (!json.present) {
+          onError("Valid Gemini API Key is missing. Set a client VITE_GEMINI_API_KEY (temporary) or configure server-side GEMINI_API_KEY and use the proxy.");
+          return;
+        }
+        // If server-side key present, warn user that live sessions still require a client token for the live SDK,
+        // but non-live calls can use the server proxy. Proceeding may fail depending on model usage.
+        onError('Server-side Gemini key is present. Non-live requests will use server proxy; live sessions may still require a client-side key.');
+      } catch (e) {
+        onError("Valid Gemini API Key is missing and proxy check failed. Please configure GEMINI_API_KEY on the server or set VITE_GEMINI_API_KEY locally.");
         return;
+      }
     }
 
     if (shopInfo.workingHours && !isShopOpen(shopInfo.workingHours.start, shopInfo.workingHours.end)) {
@@ -205,7 +219,7 @@ export const useLiveSession = ({
     onStatusChange(SessionStatus.CONNECTING);
     
     try {
-      const ai = new GoogleGenAI({ apiKey: apiKey });
+      const ai = new GoogleGenAI({ apiKey: clientApiKey });
       
       // Request microphone with better error handling
       try {

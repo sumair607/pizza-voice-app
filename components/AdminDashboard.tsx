@@ -54,16 +54,8 @@ const OrderCard: React.FC<{ order: OrderDetails }> = ({ order }) => {
       <div className="flex justify-between items-start">
         <div>
           <h3 className="font-bold text-white text-lg">{order.customerName}</h3>
-          <div className="bg-blue-900/30 p-2 rounded mt-1 mb-1">
-            <p className="text-sm text-blue-200 font-semibold">📱 WhatsApp: {order.whatsappNumber}</p>
-          </div>
-          <div className="bg-gray-700/50 p-2 rounded mb-1">
-            <p className="text-sm text-gray-200">📍 Address: {order.address}</p>
-          </div>
-          <div className="bg-green-900/30 p-2 rounded">
-            <p className="text-sm text-green-200 font-semibold">🏍️ Rider: {order.assignedRider.name}</p>
-            <p className="text-xs text-green-300">📞 {order.assignedRider.number}</p>
-          </div>
+          <p className="text-xs text-gray-400">{order.address}</p>
+          <p className="text-xs text-gray-400">Rider: {order.assignedRider.name}</p>
         </div>
         <div className="text-right">
           <p className="font-bold text-green-400 text-lg">Rs.{order.total.toFixed(2)}</p>
