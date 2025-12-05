@@ -1,0 +1,14 @@
+name: Simple Check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Always pass
+        run: echo "This check always passes"
