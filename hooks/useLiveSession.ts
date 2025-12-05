@@ -219,7 +219,7 @@ export const useLiveSession = ({
     onStatusChange(SessionStatus.CONNECTING);
     
     try {
-      const ai = new GoogleGenAI({ apiKey: apiKey });
+      const ai = new GoogleGenAI({ apiKey: clientApiKey });
       
       // Request microphone with better error handling
       try {
